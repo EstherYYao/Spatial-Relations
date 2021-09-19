@@ -1,0 +1,97 @@
+---
+title: "Cambridge Spatial Relations"
+author: "Esther"
+date: "19/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Packages
+
+```{r load package, echo=FALSE}
+
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+
+```
+
+## Loading the Data
+
+```{r load the data}
+
+Hydrants <- st_read("https://data.cambridgema.gov/api/geospatial/szvy-s7ga?method=export&format=KML", quiet=TRUE)
+
+MemorialPoles <- st_read("https://data.cambridgema.gov/api/geospatial/j2pj-hhcb?method=export&format=KML", quiet=TRUE)
+
+FStation <- st_read("https://data.cambridgema.gov/api/geospatial/q3m9-gvcq?method=export&format=KML", quiet = TRUE)
+
+NConservation <- st_read("https://data.cambridgema.gov/api/geospatial/ahi8-a7we?method=export&format=KML", quiet=TRUE)
+
+Zoning <- st_read("https://data.cambridgema.gov/api/geospatial/er5a-dnb4?method=export&format=KML", quiet=TRUE)
+
+```
+## Transforming the Data
+
+```{r}
+
+MAState <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
+
+Hydrants <- Hydrants %>%
+  st_transform(MAState)
+
+MemorialPoles <- MemorialPoles %>%
+  st_transform(MAState)
+
+NConservation <- NConservation %>%
+  st_transform(MAState)
+
+Zoning <- Zoning %>%
+  st_transform(MAState)
+
+```
+
+
+## Quick Map of Data
+
+```{r}
+
+ggplot() +
+  geom_sf(data = Zoning, fill = "papayawhip", color = NA) +
+  geom_sf(
+    data = NConservation, 
+    fill = "sandybrown",
+    color = NA 
+    ) +
+  geom_sf(data = MemorialPoles, color = "darkgreen", size = 0.2) +
+  geom_sf(data = Hydrants, color = "darkred", size = 0.1) +
+  theme_map() +
+  annotation_scale()
+
+```
+
+
+## Creating a Buffer
+
+```{r}
+
+FStation_buffer <- st_buffer(FStation, dist = 50) %>%
+  st_union()
+
+```
+
+
+
+
+
+
+
+
+
+
