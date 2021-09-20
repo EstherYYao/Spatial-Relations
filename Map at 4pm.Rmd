@@ -1,0 +1,259 @@
+---
+title: "Assign 3"
+author: "Esther"
+date: "20/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Packages & Data
+
+```{r load packages, echo=FALSE}
+
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+
+```
+
+```{r load data}
+
+Hydrants <- st_read("https://data.cambridgema.gov/api/geospatial/szvy-s7ga?method=export&format=KML", 
+                    quiet=TRUE)
+
+MemorialPoles <- st_read("https://data.cambridgema.gov/api/geospatial/j2pj-hhcb?method=export&format=KML", 
+                         quiet=TRUE)
+
+Playground <- st_read("https://data.cambridgema.gov/api/geospatial/kmiz-sbu9?method=export&format=KML",
+                      quiet=TRUE)
+
+FStation <- st_read("https://data.cambridgema.gov/api/geospatial/q3m9-gvcq?method=export&format=KML", 
+                    quiet = TRUE)
+
+Neighborhood <- st_read("https://data.cambridgema.gov/api/geospatial/k3pi-9823?method=export&format=KML", 
+                         quiet=TRUE)
+
+OpenS <- st_read("https://data.cambridgema.gov/api/geospatial/88i7-ga9f?method=export&format=KML",
+                 quiet=TRUE)
+
+
+
+```
+
+
+## Transform the Data
+
+```{r}
+
+MAState <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
+
+Hydrants <- Hydrants %>%
+  st_transform(MAState)
+
+MemorialPoles <- MemorialPoles %>%
+  st_transform(MAState)
+
+FStation <- FStation %>%
+  st_transform(MAState)
+
+Playground <- Playground %>%
+  st_transform(MAState)
+
+OpenS <- OpenS %>%
+  st_transform(MAState)
+
+Neighborhood <- Neighborhood %>%
+  st_transform(MAState)
+
+```
+
+
+## Map 1 - Hydrants within 350m of a Fire Station 
+
+The number and proportion of A points within a specified distance of B points.
+A Point-layer : Hydrants
+B Point-layer : Fire Station
+
+```{r}
+
+FStation_buffer <- st_buffer(FStation, dist = 350) %>%
+  st_union()
+
+Hy_Fire <- Hydrants[FStation_buffer,]
+
+Hydrants <- Hydrants %>%
+  st_join(Hy_Fire) %>%
+  mutate(by_FStation = !is.na(Name.y))
+
+n_FStation_Hy <- sum(Hydrants$by_FStation)
+
+n_Hydrants <- length(Hydrants$by_FStation)
+pct_FStation_Hy <- n_FStation_Hy / n_Hydrants
+
+left_side  <- st_bbox(Neighborhood)$xmin
+top_side <- st_bbox(Neighborhood)$ymax
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "papayawhip", color = "peachpuff4", lty = 4) +
+  geom_sf(data = Hydrants, size = 0.2,
+          aes(color = by_FStation)) +
+  scale_color_manual(values = c("darksalmon", "darkred"),
+          name = "Cambridge Hydrants\nby distance to a Fire Station", 
+          labels = c("No Fire Station within 350 m",
+                     "Fire Station within 30 m")) +
+  geom_sf(data = FStation_buffer, fill = NA, color = "darkred", lty = 4) +
+  geom_sf(data = FStation, color = "brown4", shape = 18， size = 3, alpha = 0.7) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side, 
+           label = paste("Of the ", 
+                         prettyNum(n_Hydrants, big.mark = ","),
+                         " Hydrants in Cambridge,", 
+                         prettyNum(n_FStation_Hy),
+                         " (", 
+                         prettyNum(100*pct_FStation_Hy, digits = 0),
+                         "%) are within 350 meters of a parking meter.",
+                         sep = ""),
+           hjust = 0, vjust = 0.5, size = 2.5) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "floralwhite"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+## Map 2 - Average number of Hydrants in each Neighborhood
+
+The average number of A points in each C polygon
+A Point : Hydrants
+C Polygon : Neighborhood
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(num_Hy = lengths(st_covers(Neighborhood, Hydrants)))
+
+ggplot(Neighborhood) +
+  geom_sf(color = NA, 
+          aes(fill = num_Hy)) +
+  scale_fill_viridis_c(name = "Cambridge neighborhoods\nby number of Hydrants",
+                       breaks = breaks <- seq(0, 250, by = 50),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "hydrants")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+## Map 3 - Distance of Hydrants to Fire Station
+
+The average (Euclidean) distance between A points and their nearest respective B points.
+A Point - Hydrants
+B Point - Fire Station
+
+```{r}
+
+right_side <- st_bbox(Hydrants)$xmax
+left_side  <- st_bbox(Hydrants)$xmin
+top_side <- st_bbox(Hydrants)$ymax
+bottom_side <- st_bbox(Hydrants)$ymin
+
+FStation <- FStation %>%
+  mutate(Hy_dist = st_nn(FStation, Hydrants, 
+                           returnDist = TRUE)$dist) %>%
+  mutate(Hy_dist = as.numeric(Hy_dist))
+
+avg_Hy_dist <- mean(FStation$Hy_dist)
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "papayawhip", color = "peachpuff4", lty = 4) +
+  
+  geom_sf(data = FStation, size = 5, shape = 18, aes(color = Hy_dist)) +
+  scale_color_viridis_c(name = 
+                          "Cambridge Hydrants\nby distance to a Fire Station") +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 300, 
+           y = top_side, 
+           label = paste("On average, a Cambridge Hydrant is ", 
+                         prettyNum(avg_Hy_dist, digits = 0),
+                         " meters from a Fire Station.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "floralwhite"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+## Map 4 - Neighborhood with Open Space
+The number and proportion of C polygons that overlap with D polygons.
+C Polygon - Neighborhood
+D Polygon - Open Space
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(num_OpenS = lengths(st_overlaps(Neighborhood, OpenS))) %>%
+  mutate(has_OpenS = num_OpenS > 0)
+
+n_OpenS_Neighborhood <- sum(Neighborhood$has_OpenS)
+
+n_Neighborhood <- length(Neighborhood$num_OpenS)
+pct_Neigh_OpenS <- n_OpenS_Neighborhood / n_Neighborhood
+
+left_side  <- st_bbox(Neighborhood)$xmin
+top_side <- st_bbox(Neighborhood)$ymax
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "papayawhip", color = "white", lty = 4) +
+  geom_sf(data = Neighborhood,
+          aes(fill = has_OpenS)) +
+  scale_fill_manual(values = c("cornsilk", "seagreen4"),
+          name = "Cambridge Neighborhoods\nby presence of Open Space", 
+          labels = c("Neighborhood without\nan overlapping body of Open Space",
+                     "Neighborhood with an\noverlapping body of Open Space")) +
+  geom_sf(data = OpenS, fill = "seagreen1", color = NA) + 
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side, 
+           label = paste(n_OpenS_Neighborhood ,
+                          "(", 
+                         prettyNum(100*pct_Neigh_OpenS, digits = 0),
+                         "%) of Cambridge's", 
+                         length(Neighborhood$Name),
+                         "neighborhoods contain or overlap with", 
+                         "a body of Open Space."),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "floralwhite"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+
+
+
+
+
+
+
+
