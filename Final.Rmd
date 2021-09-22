@@ -13,9 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Our group has attempted to use RStudio to illustrate the relationship of different planning systems with elements that constitute the urban landscape. We have used 2 point layers - fire hydrants and fire stations, and 2 polygon layers - neighborhoods and open spaces in the city of Cambridge, Massachusetts. The following calculations are an attempt to analyze how well distributed the fire stations are with respect to the neighborhoods and open spaces, and the number of fire hydrants in the city to be able to deal with emergencies on an urgent basis. Our analysis proves that these firefighting elements are well measured out through the city, with a substantial number of hydrants around each of the stations in the different neighborhoods.
 
-Data Used: 
-Polygon: Zoning / open Space
-Points: hydrants / fire station
+Data Used: Zoning, open Space (Polygon), hydrants, fire station(Point)
 
 Group Member: Amna Pervaiz, Gauri Nagpal, Yirong Yao (Group 17)
 
