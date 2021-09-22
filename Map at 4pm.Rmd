@@ -42,8 +42,6 @@ Neighborhood <- st_read("https://data.cambridgema.gov/api/geospatial/k3pi-9823?m
 OpenS <- st_read("https://data.cambridgema.gov/api/geospatial/88i7-ga9f?method=export&format=KML",
                  quiet=TRUE)
 
-
-
 ```
 
 
@@ -108,7 +106,7 @@ ggplot(Neighborhood) +
           labels = c("No Fire Station within 350 m",
                      "Fire Station within 30 m")) +
   geom_sf(data = FStation_buffer, fill = NA, color = "darkred", lty = 4) +
-  geom_sf(data = FStation, color = "brown4", shape = 18， size = 3, alpha = 0.7) +
+  geom_sf(data = FStation, color = "brown4", shape = 18, size = 3, alpha = 0.7) +
   annotation_scale(location = "br") +
   annotation_north_arrow(location = "tr",
                          style = north_arrow_minimal()) +
@@ -250,6 +248,56 @@ ggplot(Neighborhood) +
 ```
 
 
+```{r}
+
+left_side  <- st_bbox(Hydrants)$xmin
+top_side <- st_bbox(Hydrants)$ymax
+
+FStation_buffer <- st_buffer(FStation, dist = 50) %>%
+  st_union()
+
+Hy_Fire <- Hydrants[FStation_buffer,]
+
+Hydrants <- Hydrants %>%
+  st_join(Hy_Fire) %>%
+  mutate(by_FStation = !is.na(Name.y))
+
+n_FStation_Hy <- sum(Hydrants$by_FStation)
+
+n_Hydrants <- length(Hydrants$by_FStation)
+pct_FStation_Hy <- n_FStation_Hy / n_Hydrants
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "lemonchiffon2", color = "white", size = 1) +
+    geom_sf(data = OpenS, color = "palegreen", alpha = 0.1) +
+  geom_sf(data = FStation, color = "lightcoral", size = 5, alpha = 0.5) +
+  geom_sf(data = Hydrants, size = 0.75, alpha = 0.3,
+          aes(color = by_FStation)) +
+    scale_color_manual(values = c("lemonchiffon2", "palegreen"),
+          name = "Cambridge hydrants\nby distance to a firestation", 
+          labels = c("No hydrant within 50 m",
+                     "hydrants within 50 m")) +
+  theme_map() +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side, 
+           label = paste("Of the ", 
+                         prettyNum(n_Hydrants, big.mark = ","),
+                         " hydrant in Cambridge\n", 
+                         prettyNum(n_FStation_Hy, big.mark = ","),
+                         " (", 
+                         prettyNum(100*pct_FStation_Hy, digits = 0),
+                         "%) are within 50\nmeters of a firestation",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 2) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "cornsilk1"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
 
 
 
