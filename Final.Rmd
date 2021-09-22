@@ -1,0 +1,322 @@
+---
+title: "Assignment 3 - Spatial Relationships"
+author: "Esther"
+date: "22/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Our group has attempted to use RStudio to illustrate the relationship of different planning systems with elements that constitute the urban landscape. We have used 2 point layers - fire hydrants and fire stations, and 2 polygon layers - neighborhoods and open spaces in the city of Cambridge, Massachusetts. The following calculations are an attempt to analyze how well distributed the fire stations are with respect to the neighborhoods and open spaces, and the number of fire hydrants in the city to be able to deal with emergencies on an urgent basis. Our analysis proves that these firefighting elements are well measured out through the city, with a substantial number of hydrants around each of the stations in the different neighborhoods.
+
+Data Used: 
+Polygon: Zoning / open Space
+Points: hydrants / fire station
+
+Group Member: Amna Pervaiz, Gauri Nagpal, Yirong Yao (Group 17)
+
+## Loading Packages & Data
+
+```{r load packages}
+
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+
+```
+
+```{r}
+
+Hydrants <- st_read("https://data.cambridgema.gov/api/geospatial/szvy-s7ga?method=export&format=KML", 
+                    quiet=TRUE)
+
+FStation <- st_read("https://data.cambridgema.gov/api/geospatial/q3m9-gvcq?method=export&format=KML", 
+                    quiet = TRUE)
+
+Neighborhood <- st_read("https://data.cambridgema.gov/api/geospatial/k3pi-9823?method=export&format=KML", 
+                         quiet=TRUE)
+
+OpenS <- st_read("https://data.cambridgema.gov/api/geospatial/88i7-ga9f?method=export&format=KML",
+                 quiet=TRUE)
+
+```
+
+## Transform the Data
+
+```{r}
+
+MAState <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
+
+Hydrants <- Hydrants %>%
+  st_transform(MAState)
+
+FStation <- FStation %>%
+  st_transform(MAState)
+
+OpenS <- OpenS %>%
+  st_transform(MAState)
+
+Neighborhood <- Neighborhood %>%
+  st_transform(MAState)
+
+```
+
+
+## Map 1 - Hydrants within 50m of Fire Station
+
+The following map illustrates the result of calculating the number, and hence percentage of fire hydrants within 50 meters from each fire station in the City of Cambridge.
+
+The map is an interesting output of the calculation; showing only 1% of the hydrants are within 50 meters of each fire station. Maybe a change of scale of the points could have made this information even clearer to understand.
+
+
+```{r}
+
+FStation_buffer <- st_buffer(FStation, dist = 50) %>%
+  st_union()
+
+Hy_Fire <- Hydrants[FStation_buffer,]
+
+Hydrants <- Hydrants %>%
+  st_join(Hy_Fire) %>%
+  mutate(by_FStation = !is.na(Name.y))
+
+n_FStation_Hy <- sum(Hydrants$by_FStation)
+
+n_Hydrants <- length(Hydrants$by_FStation)
+pct_FStation_Hy <- n_FStation_Hy / n_Hydrants
+
+left_side  <- st_bbox(Hydrants)$xmin
+top_side <- st_bbox(Hydrants)$ymax
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "lemonchiffon2", color = "white", size = 1) +
+    geom_sf(data = OpenS, color = "palegreen", alpha = 0.1) +
+  geom_sf(data = FStation, color = "lightcoral", size = 5, alpha = 0.5) +
+  geom_sf(data = Hydrants, size = 0.75, alpha = 0.3,
+          aes(color = by_FStation)) +
+    scale_color_manual(values = c("lemonchiffon2", "palegreen"),
+          name = "Cambridge hydrants\nby distance to a firestation", 
+          labels = c("No hydrant within 50 m",
+                     "hydrants within 50 m")) +
+  theme_map() +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 4000, 
+           y = top_side - 300, 
+           label = paste("Of the ", 
+                         prettyNum(n_Hydrants, big.mark = ","),
+                         " hydrant in Cambridge\n", 
+                         prettyNum(n_FStation_Hy, big.mark = ","),
+                         " (", 
+                         prettyNum(100*pct_FStation_Hy, digits = 0),
+                         "%) are within 50\nmeters of a firestation",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "cornsilk1"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+## Map 2 - Density of Hydrants in each neighborhood
+
+The following code illustrates the calculation of the density of fire hydrants in each neighborhood in the City of Cambridge.
+
+This was carried out by first calculating the area of each neighborhood, converting the units of the coordinate system, and then adjusting the legend to accommodate the difference in the values.
+
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(area = set_units(st_area(Neighborhood), km^2)) %>%
+  mutate(hydrant_dens = as.numeric(n_Hydrants / area))
+
+ggplot(Neighborhood) +
+  geom_sf(color = NA, 
+          aes(fill = hydrant_dens)) +
+    scale_fill_viridis_c(name = 
+                           "Cambridge Neighbhood\nby hydrant density",
+                       breaks = breaks <- seq(0, 3000, by = 500),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "hydrant per square km")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+    legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+
+```
+
+
+## Map 3 - Number of Hydrants in each Neighborhood
+
+The following code illustrates the calculation of the number of fire hydrants in each neighborhood in the City of Cambridge. This graphic contrasts interestingly from the previous one, reflecting the hydrants the city need to maintain. While the pervious map shows the density aspect which might be more related to the distribution of the hydrants and indications of fire vulnerability. 
+
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(num_Hy = lengths(st_covers(Neighborhood, Hydrants)))
+
+ggplot(Neighborhood) +
+  geom_sf(color = NA, 
+          aes(fill = num_Hy)) +
+  scale_fill_viridis_c(name = "Cambridge Neighborhood\nby number of Hydrants",
+                       breaks = breaks <- seq(0, 250, by = 50),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "hydrants")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+```
+
+
+## Map 4 - Average distance of hydrants from the fire stations
+
+The purpose of this map is to show the average distance of hydrants to fire stations. This was achieved by calculating the distances, then calculating the average, and displaying the results visually. 
+
+
+
+```{r}
+
+right_side <- st_bbox(Hydrants)$xmax
+left_side  <- st_bbox(Hydrants)$xmin
+top_side <- st_bbox(Hydrants)$ymax
+bottom_side <- st_bbox(Hydrants)$ymin
+
+FStation <- FStation %>%
+  mutate(Hy_dist = st_nn(FStation, Hydrants, 
+                           returnDist = TRUE)$dist) %>%
+  mutate(Hy_dist = as.numeric(Hy_dist))
+
+avg_Hy_dist <- mean(FStation$Hy_dist)
+
+ggplot(Neighborhood) +
+  geom_sf(fill = "papayawhip", color = "peachpuff4", lty = 4) +
+  
+  geom_sf(data = FStation, size = 5, shape = 18, aes(color = Hy_dist)) +
+  scale_color_viridis_c(name = 
+                          "Cambridge Hydrants\nby distance to a Fire Station") +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 4000, 
+           y = top_side -300, 
+           label = paste("On average, a Cambridge Hydrant is\n ", 
+                         prettyNum(avg_Hy_dist, digits = 0),
+                         " meters from a Fire Station.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  geom_sf(data = Hydrants, color = "mediumturquoise", size = 0.5, alpha = 0.2) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "floralwhite"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+
+```
+
+## Map 5 - Average Fire Stations in Neighborhoods
+
+This map illustrates the average number of Fire Stations within Cambridge neighborhoods. Of all the neighborhoods, only two have 2 fire stations on average and these neighborhoods are opposite to each other and closer to public institutions such as city hall and private institutions like Harvard and MIT.
+
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(num_FS = lengths(st_covers(Neighborhood, FStation)))
+
+ggplot(Neighborhood) +
+  geom_sf(color = "orange", 
+          aes(fill = num_FS)) +
+  scale_fill_viridis_c(name = "Average Number of Fire Stations \nin Cambridge Neighborhoods",
+                       breaks = breaks <- seq(0, 5, by = 1),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "Fire Stations")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+theme(panel.background = element_rect(fill = "floralwhite"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray")) 
+
+```
+
+## Map 6 - Overlap of Open Space and the Neighborhoods
+
+The following map shows the overlaps in open spaces and neighborhoods in the city of Cambridge. 11 of 13 neighborhoods in the city contain or overlap with open spaces. These happen to be the neighborhoods with the least fire stations.
+
+```{r}
+
+Neighborhood <- Neighborhood %>%
+  mutate(num_OpenS = lengths(st_overlaps(Neighborhood, OpenS))) %>%
+  mutate(has_OpenS = num_OpenS > 0)
+
+n_OpenS_Neighborhood <- sum(Neighborhood$has_OpenS)
+
+n_OpenS_Neighborhood
+
+left_side  <- st_bbox(OpenS)$xmin
+top_side <- st_bbox(OpenS)$ymax
+
+ggplot(OpenS) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = Neighborhood,
+          aes(fill = has_OpenS)) +
+  scale_fill_manual(values = c("darkred", "cornsilk1"),
+          name = "Cambridge Neighborhood\nby presence of Open Spaces", 
+          labels = c("Neighborhood without\nan overlapping Open Spaces",
+                     "Neighborhood with an\noverlapping Open Spaces")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 4000, 
+           y = top_side - 300, 
+           label = paste(n_OpenS_Neighborhood ,
+                         "of Cambridge's", 
+                         length(Neighborhood$Name),
+                         "Neighborhood contain\nor overlap with", 
+                         "open spaces."),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "lightblue"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+
+
+```
+
+## Contribution Statement
+
+We found the dataset together, as a team from the Cambridge Open Data portal. Each member then used the data set consisting of 2 point layers and 2 polygon layers and then contributed 2 maps each for the final submission. We have decided that each team member gets 10 points. We were all engaged in the project and all met in person to start the maps and communicated throughout the process to complete the assignment.
+
+
+
+
+
+
+
+
+
+
+
+
+
